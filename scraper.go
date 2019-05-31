@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/net/html"
 )
 
-// Scraper is the object that will be doing to work for the scraping
+// Scraper does the, you guessed it, scraping
 type Scraper struct {
 	client    *http.Client
 	targetURL string
@@ -60,32 +58,26 @@ func (s *Scraper) fetchURL(target string) ([]byte, error) {
 	return data, nil
 }
 
-func getFriendlyString(bad string) string {
-	// deal with poorly formed urls later if this is an issue
-	url, _ := url.Parse(bad)
-
-	// replace all forward slashes with underscores
-	return strings.ReplaceAll(url.Host+url.Path, "/", "_")
-}
-
+// getLinks will find all the links in byte slice and save them off into
+// a string slice. This will later be enhanced to be a bit more concurrent,
+// probably taking in a channel and sending the links to that channel to be
+// processed as they're encountered. This will greatly improve efficiency
+// because this method has to walk through the entirety of the html tree
+// to find all the links
 func getLinks(data []byte) []string {
 	reader := bytes.NewReader(data)
 	// Tokenize the HTML
-	z := html.NewTokenizer(reader)
+	tokenizer := html.NewTokenizer(reader)
 
+	// this won't be a thing anymore once we're concurrent
 	var links []string
-
-	i := 0
 
 	for {
 		// If the HTML has ended, we break out of the loop
-		token := z.Next()
-		fmt.Printf("i: %d\n", i)
-		i++
+		token := tokenizer.Next()
 
 		if token == html.ErrorToken {
-			fmt.Println("error token")
-			fmt.Println(z.Err())
+			fmt.Println(tokenizer.Err())
 			break
 		}
 
@@ -93,13 +85,15 @@ func getLinks(data []byte) []string {
 		if token == html.StartTagToken {
 			fmt.Println("found a start token")
 			// Check if the token is an <a> tag
-			if name, _ := z.TagName(); string(name) == "a" {
+			if name, _ := tokenizer.TagName(); string(name) == "a" {
 				for {
 					// Get the next attribute
-					name, val, more := z.TagAttr()
+					name, val, more := tokenizer.TagAttr()
 
 					// Check if the attribute is "href"
 					if string(name) == "href" {
+						// this will be the addition to the links channel
+						// once that exists
 						// Cast Url
 						links = append(links, string(val))
 					}
@@ -114,7 +108,6 @@ func getLinks(data []byte) []string {
 		}
 	}
 
-	fmt.Println(len(links))
 	return links
 }
 
@@ -142,7 +135,10 @@ func (s *Scraper) Scrape() error {
 
 	s.results[fsFriendlyStr] = data
 
+	// get links will just be called instead of returning a value it'll use a channel
 	links := getLinks(data)
+
+	// right here is where we'd read from the channel until it's done
 
 	// Parse the data for links and kick off scraperHelpers for each
 	// going to need to tell our driver how many links it needs to wait for
@@ -171,6 +167,9 @@ func (s *Scraper) scraperHelper(target string) error {
 	// and its data to the results map
 	fmt.Printf("Adding byte data to the results map for %s\n", target)
 	target = getFriendlyString(target)
+
+	// results map is going to become a call to the writer to actually
+	// write the data
 	s.results[target] = data
 	return nil
 }

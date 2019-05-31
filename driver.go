@@ -5,6 +5,12 @@ import (
 	"os"
 )
 
+// driver ideas:
+// pagination of a website
+// flag to set up the scraped content
+// flag to run the scraped content locally
+// flag to scrape and run
+
 func main() {
 	// Do some input checking
 	if args := os.Args; len(args) != 2 {
