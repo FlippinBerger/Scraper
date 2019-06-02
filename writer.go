@@ -9,11 +9,18 @@ import (
 	"strings"
 )
 
+// LinkData houses all the logic to write a scraped webpage to the filesystem
+type LinkData struct {
+	path string
+	data []byte
+}
+
 // Writer takes byte input on it's channel and writes the output to the
 // defined resultsPath
 type Writer struct {
 	resultsPath string
-	writer      chan []byte
+	writer      chan *LinkData
+	finished chan bool
 }
 
 // NewWriter constructs the Writer object to add your data to the file system
@@ -26,13 +33,11 @@ func NewWriter(path string) *Writer {
 		log.Fatal(err)
 	}
 
-	w.writer = make(chan []byte)
+	w.writer = make(chan *LinkData)
+	w.finished = make(chan bool)
 
 	return w
 }
-
-// below here is all the work from the original Scraper class that needs to be
-// cleaned up and made into a neat little writer
 
 // getFriendlyString takes the entire link url, and changes it to
 // Host + Path with the forward slashes replaced with underscores to be
@@ -42,7 +47,7 @@ func getFriendlyString(fullLink string) string {
 	url, _ := url.Parse(fullLink)
 
 	// replace all forward slashes with underscores
-	return strings.ReplaceAll(url.Host+url.Path, "/", "_")
+	return strings.Replace(url.Host+url.Path, "/", "_", -1)
 }
 
 // createResultsDirFor will create a directory at the PWD with the name
@@ -57,7 +62,8 @@ func createResultsDirFor(target string) (string, error) {
 	resultsDirName := target + "_results"
 	resultsDirPath := pwd + "/" + resultsDirName
 
-	// if the results Dir exists we need to delete it
+	// if the results Dir exists; delete it
+	// TODO can be smarter here in the future
 	if _, err := os.Stat(resultsDirPath); !os.IsNotExist(err) {
 		os.RemoveAll(resultsDirPath)
 	}
@@ -67,10 +73,33 @@ func createResultsDirFor(target string) (string, error) {
 	return resultsDirPath, nil
 }
 
+// AcceptData watches the writer's channel for new data to write 
+// to the file system
+func (w *Writer) AcceptData() {
+	fmt.Printf("size of writer loop is: %d\n", len(w.writer))
+	for linkData := range w.writer {
+		fmt.Println("writing to ", linkData.path)
+		w.Write(linkData)
+	}
+	fmt.Println("finishing the AcceptData loop")
+
+	w.finished <- true
+}
+
+// Write will parse out the linkData and write it to the filesystem
+func (w *Writer) Write(linkData *LinkData) {
+	fsFriendlyName := getFriendlyString(linkData.path)
+	err := w.writeFile(fsFriendlyName, linkData.data)
+
+	if err != nil {
+		fmt.Printf("Writing of %s was unsuccessful due to: %s\n", fsFriendlyName, err)
+	}
+}
+
 // writeFile will write the file to the path given
-func writeFile(path, target string, data []byte) error {
+func (w *Writer) writeFile(target string, data []byte) error {
 	target = getFriendlyString(target)
-	pathWithFile := path + "/" + target
+	pathWithFile := w.resultsPath + "/" + target
 
 	_, err := os.Create(pathWithFile)
 	if err != nil {
@@ -80,49 +109,6 @@ func writeFile(path, target string, data []byte) error {
 	err = ioutil.WriteFile(pathWithFile, data, 0666)
 	if err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// WriteResults will transfer each entry in the results map to a file in the FS
-func (s *Scraper) WriteResults() error {
-	fmt.Println("Writing the results to output folder.")
-
-	// Write the original target url first:
-	friendlyStr := getFriendlyString(s.targetURL)
-	data, exists := s.results[friendlyStr]
-	if !exists {
-		return fmt.Errorf("The target URL %s wasn't in the result set", s.targetURL)
-	}
-
-	// We have data to write, create the directory under targetURL_results if
-	// it doesn't already exist
-	path, err := createResultsDirFor(s.targetURL)
-	if err != nil {
-		return fmt.Errorf("Unable to create results dir for %s with %s", s.targetURL, err)
-	}
-
-	err = writeFile(path, s.targetURL, data)
-	if err != nil {
-		return fmt.Errorf("Unable to write file for %s with %s", s.targetURL, err)
-	}
-
-	// write the original target url to a file named target_targetURL
-
-	// loop through all the keys in the result set and write them to their own
-	// files as long as they aren't the parent
-	for k := range s.results {
-		fmt.Printf("k is %s\n", k)
-		if k == s.targetURL {
-			continue
-		}
-
-		// write this urls data to a file named k
-		err = writeFile(path, k, s.results[k])
-		if err != nil {
-			return fmt.Errorf("Unable to write file for %s with %s", k, err)
-		}
 	}
 
 	return nil

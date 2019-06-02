@@ -21,7 +21,9 @@ func main() {
 	// Get the url to be scraped
 	url := os.Args[1]
 
-	scraper := NewScraper(url)
+	writingFinished := make(chan bool)
+
+	scraper := NewScraper(url, writingFinished)
 
 	err := scraper.Scrape()
 	if err != nil {
@@ -29,11 +31,11 @@ func main() {
 		return
 	}
 
-	// need to wait for all the writers to finish before we finish execution
-	scraper.wg.Wait()
+	<-scraper.writer.finished
 
-	err = scraper.WriteResults()
-	if err != nil {
-		fmt.Printf("Writing the results was unsuccessful due to: %s\n", err)
-	}
+	// need to wait for all the writers to finish before we finish execution
+	//scraper.wg.Wait()
+
+	// May need to handle the other side of concurrency here to make 
+	// sure the program isn't finishing too early
 }
