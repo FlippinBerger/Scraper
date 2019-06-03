@@ -31,7 +31,7 @@ type Scraper struct {
 }
 
 // NewScraper is a contructor that will give us our Scraper object from a url
-func NewScraper(target string, writerFinished chan bool) *Scraper {
+func NewScraper(target string) *Scraper {
 	scraper := new(Scraper)
 	scraper.targetURL = target
 

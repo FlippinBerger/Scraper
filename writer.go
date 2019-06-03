@@ -20,7 +20,6 @@ type LinkData struct {
 type Writer struct {
 	resultsPath string
 	writer      chan *LinkData
-	finished chan bool
 }
 
 // NewWriter constructs the Writer object to add your data to the file system
@@ -34,7 +33,6 @@ func NewWriter(path string) *Writer {
 	}
 
 	w.writer = make(chan *LinkData)
-	w.finished = make(chan bool)
 
 	return w
 }
@@ -82,8 +80,6 @@ func (w *Writer) AcceptData() {
 		w.Write(linkData)
 	}
 	fmt.Println("finishing the AcceptData loop")
-
-	w.finished <- true
 }
 
 // Write will parse out the linkData and write it to the filesystem
